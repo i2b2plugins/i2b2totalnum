@@ -1,10 +1,11 @@
-/* Totalnum patient counting script beta - speed improvement, edited for ACT-OMOP. 
-   This version by Darren Henderson (DARREN.HENDERSON@UKY.EDU) with some packaging by Jeff Klann.
-   Based on code by Griffin Weber, Jeff Klann, Mike Mendis, Lori Phillips, Jeff Green, and Darren Henderson.
+-----------------------------------------------------------------------------------------------------------------
+-- Totalnum patient counting script refactored - speed improvement, support for ACT-OMOP. 
+--   This version by Darren Henderson (DARREN.HENDERSON@UKY.EDU) and Jeff Klann, PhD.
+--   Based on code by Griffin Weber, Jeff Klann, Mike Mendis, Lori Phillips, Jeff Green, and Darren Henderson.
 
-   NOTE: DOES NOT SUPPORT VISIT/PATIENT DIMENSION AT PRESENT 
-   NOTE: DROP IF EXISTS IS MSSQL2016, SO COMMENTED OUT. SHOULD BE REPLACED WITH MSSQL2012 CODE. */
-   
+--   NOTE: ONTOLOGY TABLE NAMES CORRESPONDING TO PATIENT/VISIT DIMENSION ARE HARDCODED. */   
+-- Last updated: July 2023
+-----------------------------------------------------------------------------------------------------------------
 /* SET TARGET DATABASE */
 --USE I2B2ACT
 --GO
@@ -19,7 +20,14 @@
 --DROP PROCEDURE IF EXISTS PAT_COUNT_FAST;
 --GO
 
-CREATE PROCEDURE [dbo].[PAT_COUNT_FAST]  (@metadataTable varchar(50))
+IF EXISTS ( SELECT  *
+            FROM    sys.objects
+            WHERE   object_id = OBJECT_ID(N'FastTotalnumCount')
+                    AND type IN ( N'P', N'PC' ) ) 
+DROP PROCEDURE FastTotalnumCount;
+GO
+
+CREATE PROCEDURE [dbo].[FastTotalnumCount]  
 
 AS BEGIN
 declare @sqlstr nvarchar(4000)
@@ -35,146 +43,10 @@ set @startime = getdate();
 /********************************************/
 
 
-/************************************************/
-/* CREATE MASTER ONTOLOGY TABLE FROM METADATA   */
-/* SITES CAN CUSTOMIZE THIS BLOCK OF CODE TO    */ 
-/* INCLUDE ANY SITE CUSTOM ONTOLOGY ITEMS       */
-/************************************************/ 
-
-CREATE TABLE #ONTOLOGY (
-  [PATH_NUM] [int] IDENTITY(1,1) PRIMARY KEY,
-	[C_HLEVEL] [int] NOT NULL,
-	[C_FULLNAME] [varchar](700) NOT NULL,
-  [C_SYNONYM_CD] [char](1) NOT NULL,
-	[C_VISUALATTRIBUTES] [char](3) NOT NULL,
-	[C_BASECODE] [varchar](50) NULL,
-	[C_FACTTABLECOLUMN] [varchar](50) NOT NULL,
-	[C_TABLENAME] [varchar](50) NOT NULL,
-	[C_COLUMNNAME] [varchar](50) NOT NULL,
-	[C_COLUMNDATATYPE] [varchar](50) NOT NULL,
-	[C_OPERATOR] [varchar](10) NOT NULL,
-	[C_DIMCODE] [varchar](700) NOT NULL,
-	[M_APPLIED_PATH] [varchar](700) NOT NULL
-) ON [PRIMARY];
-
-
-
-
-/* LOAD #ONTOLOGY */
-DECLARE @TABLE_NAME VARCHAR(400) = '';
-DECLARE @PATH VARCHAR(700) = '';
-DECLARE @SQL VARCHAR(MAX) = '';
-
-DECLARE CUR CURSOR FOR
-  SELECT C_TABLE_NAME, CONCAT(C_FULLNAME,'%') AS [PATH]
-  FROM TABLE_ACCESS
-  WHERE C_TABLE_NAME=@metadataTable -- DO JUST 1 ONTOLOBY
-  -- (FOR TESTING) where c_table_name='ACT_ICD10CM_DX_V4_OMOP'
-  --WHERE C_TABLE_CD NOT IN ('ACT_DEMO','ACT_VISIT') /* THESE ARE HANDLED BY CONVERTING DEMOGRAPHICS AND VISIT DETAILS INTO FACTS IN A LATER STEP */
-
-OPEN CUR
-FETCH NEXT FROM CUR
-  INTO @TABLE_NAME, @PATH
-
-WHILE @@FETCH_STATUS=0
-BEGIN
-  SET @SQL = CONCAT('INSERT INTO #ONTOLOGY (C_HLEVEL, C_FULLNAME, C_SYNONYM_CD, C_VISUALATTRIBUTES, C_BASECODE, C_FACTTABLECOLUMN, C_TABLENAME, C_COLUMNNAME, C_COLUMNDATATYPE, C_OPERATOR, C_DIMCODE, M_APPLIED_PATH)
-              SELECT DISTINCT C_HLEVEL, C_FULLNAME, C_SYNONYM_CD, C_VISUALATTRIBUTES, C_BASECODE, C_FACTTABLECOLUMN, C_TABLENAME, C_COLUMNNAME, C_COLUMNDATATYPE, C_OPERATOR, C_DIMCODE, M_APPLIED_PATH
-              FROM '
-              ,@TABLE_NAME
-              ,' WHERE C_FULLNAME LIKE '''
-              ,@PATH
-              ,'''')
-  PRINT @SQL
-  EXEC(@SQL)
-
-  FETCH NEXT FROM CUR
-    INTO @TABLE_NAME, @PATH
-
-END
-
-CLOSE CUR
-DEALLOCATE CUR
-
-
-/* THIS ONTOLOGY WILL BE USED TO CONVERT PATIENT DATA IN THE PATIENT_DIMENSION TABLE INTO FACTS THAT CAN BE AGGREGATED IN THE SAME FASHION AS THE FACT(S) TABLES */
-/*;WITH CTE_BASECODE_OVERRIDE AS (
-SELECT '\ACT\Visit Details\Length of stay\ > 10 days\' AS c_fullname, 'visit_dimension|length_of_stay:>10' c_basecode union all
-SELECT '\ACT\Visit Details\Length of stay\' AS c_fullname, 'visit_dimension|length_of_stay:>0' c_basecode union all
-SELECT '\ACT\Visit Details\Length of stay\' AS c_fullname, 'visit_dimension|length_of_stay:>0' c_basecode union all
-SELECT '\ACT\Visit Details\Age at visit\>= 65 years old\' AS c_fullname, 'VIS|AGE:>=65' AS c_basecode union all
-SELECT '\ACT\Visit Details\Age at visit\>= 85 years old\' AS c_fullname, 'VIS|AGE:>=85' AS c_basecode union all
-SELECT '\ACT\Visit Details\Age at visit\>= 90 years old\' AS c_fullname, 'VIS|AGE:>=90' AS c_basecode union all
-SELECT '\ACT\Demographics\Age\>= 90 years old\' AS c_fullname, 'DEM|AGE:>=90' AS c_basecode union all
-SELECT '\ACT\Demographics\Age\>= 85 years old\' AS c_fullname, 'DEM|AGE:>=85' AS c_basecode union all
-SELECT '\ACT\Demographics\Age\>= 65 years old\' AS c_fullname, 'DEM|AGE:>=65' AS c_basecode union all
-SELECT '\ACT\Demographics\Age\>= 18 years old\' AS c_fullname, 'DEM|AGE:>=18' AS c_basecode union all
-SELECT '\ACT\Demographics\Age\< 18 years old\'  AS c_fullname, 'DEM|AGE:<18'  AS c_basecode 
-)
-INSERT INTO #ONTOLOGY (C_HLEVEL, M.C_FULLNAME, C_SYNONYM_CD, C_VISUALATTRIBUTES, C_BASECODE, C_FACTTABLECOLUMN, C_TABLENAME, C_COLUMNNAME, C_COLUMNDATATYPE, C_OPERATOR, C_DIMCODE, M_APPLIED_PATH)
-SELECT DISTINCT c_hlevel, M.c_fullname, c_synonym_cd, c_visualattributes, COALESCE(BO.c_basecode, M.c_basecode) AS c_basecode, c_facttablecolumn, c_tablename, c_columnname, c_columndatatype, c_operator, c_dimcode, m_applied_path 
-FROM (
-SELECT c_hlevel, c_fullname, c_synonym_cd, c_visualattributes, case when charindex(':',c_basecode)=0 and nullif(c_basecode,'') is not null 
-        then concat(c_tablename,'|',c_columnname,':',c_basecode)
-        /* override ACT age at visit FACT based c_basecode so the query can pull AGE TODAY simultaneously below in the next step
-            since its c_basecode is also DEM|AGE:' */
-        when c_fullname like '\ACT\Visit Details\Age at visit\%' then replace(c_basecode,'DEM|','VIS|') 
-        else c_basecode
-        end as c_basecode, c_facttablecolumn, c_tablename, c_columnname, c_columndatatype, c_operator, c_dimcode, m_applied_path
-FROM DBO.ACT_VISIT_DETAILS_V4
-UNION
-SELECT c_hlevel, c_fullname, c_synonym_cd, c_visualattributes, case when charindex(':',c_basecode)=0 and nullif(c_basecode,'') is not null 
-                        then concat(c_tablename,'|',c_columnname,':',c_basecode) 
-                        else c_basecode 
-                        end as c_basecode, c_facttablecolumn, c_tablename, c_columnname, c_columndatatype, c_operator, c_dimcode, m_applied_path
-FROM DBO.ACT_DEM_V4
-)M LEFT JOIN CTE_BASECODE_OVERRIDE BO
-  ON M.c_fullname = BO.c_fullname
-where C_FACTTABLECOLUMN != 'concept_cd';
-*/
-/* END #ONTOLOGY LOAD */
-
-CREATE INDEX IDX_ONT_ITEMS ON #ONTOLOGY (C_FULLNAME) INCLUDE (C_HLEVEL, C_BASECODE);
-
-EXEC EndTime @startime,@metadataTable,'ontology';
-    set @startime = getdate(); 
-
-/* BUILD CLOSURE TABLE */
-
-CREATE TABLE #CONCEPT_CLOSURE (
-  ANCESTOR INT,
-  DESCENDANT INT,
-  C_BASECODE VARCHAR(50),
-  PRIMARY KEY CLUSTERED (ANCESTOR,DESCENDANT)
-) 
-
-/* RECURSIVE CTE TO CONVERT PATHS TO ANCESTOR/DESCENDANT KEY PAIRS FOR CLOSURE TABLE */
-;WITH CONCEPTS (C_FULLNAME, C_HLEVEL, C_BASECODE, DESCENDANT) AS (
-SELECT C_FULLNAME, CAST(C_HLEVEL AS INT) C_HLEVEL, C_BASECODE, PATH_NUM AS DESCENDANT
-FROM #ONTOLOGY
-WHERE ISNULL(C_FULLNAME,'') <> '' AND ISNULL(C_BASECODE,'') <> ''
-UNION ALL
-SELECT LEFT(C_FULLNAME, LEN(C_FULLNAME)-CHARINDEX('\', RIGHT(REVERSE(C_FULLNAME), LEN(C_FULLNAME)-1))) AS C_FULLNAME
-  , CAST(C_HLEVEL-1 AS INT) C_HLEVEL, C_BASECODE, DESCENDANT
-FROM CONCEPTS
-WHERE CONCEPTS.C_HLEVEL>0
-)
-INSERT INTO #CONCEPT_CLOSURE(ANCESTOR,DESCENDANT,C_BASECODE)
-SELECT DISTINCT O.PATH_NUM AS ANCESTOR, C.DESCENDANT, ISNULL(C.C_BASECODE,'') C_BASECODE
-FROM CONCEPTS C
-  INNER JOIN #ONTOLOGY O
-    ON C.C_FULLNAME=O.C_FULLNAME
-OPTION(MAXRECURSION 0);
-
-CREATE INDEX IDX_DESCN ON #CONCEPT_CLOSURE (DESCENDANT);
-
-EXEC EndTime @startime,@metadataTable,'closure';
-    set @startime = getdate();
-
 /* BUILD PAT/VIS DIM FEATURES AS FACT TUPLES */
 
 CREATE TABLE #PV_FACT_PAIRS (PATIENT_NUM INT, CONCEPT_CD VARCHAR(50), PRIMARY KEY (PATIENT_NUM, CONCEPT_CD));
-/*
+
 ;WITH PATIENT_VISIT_PRELIM AS (
 SELECT P.PATIENT_NUM
   , FLOOR(DATEDIFF(DD,P.BIRTH_DATE,GETDATE())/365.25) AS AGE_TODAY_NUM
@@ -224,7 +96,7 @@ UNPIVOT
   , AGE_VISIT_GTE65, AGE_VISIT_GTE85, AGE_VISIT_GTE90
   , LENGTH_OF_STAY, LENGTH_OF_STAY_GTE10, INOUT_CD))P
 ;
-*/
+
 /* CALCULATE TOTALNUMS */
 
 ;WITH CTE_FACT_PAIRS AS (
@@ -232,32 +104,23 @@ SELECT PATIENT_NUM, CONCEPT_CD FROM #PV_FACT_PAIRS
 UNION ALL
 SELECT PATIENT_NUM, CONCEPT_CD FROM OBSFACT_PAIRS
 )
-INSERT INTO TOTALNUM WITH(TABLOCK) (C_FULLNAME, AGG_COUNT)
-SELECT DISTINCT OANC.C_FULLNAME, C.AGG_COUNT
+INSERT INTO TOTALNUM WITH(TABLOCK) (C_FULLNAME, AGG_COUNT, AGG_DATE, TYPEFLAG_CD)
+SELECT DISTINCT OANC.C_FULLNAME, C.AGG_COUNT, CONVERT(DATE, GETDATE()),'PF'
 FROM (
 SELECT CC_ANCESTOR.ANCESTOR, COUNT(DISTINCT PATIENT_NUM) AGG_COUNT
-FROM #CONCEPT_CLOSURE CC_ANCESTOR
-  JOIN #ONTOLOGY O
+FROM CONCEPT_CLOSURE CC_ANCESTOR
+  JOIN TNUM_ONTOLOGY O
     ON CC_ANCESTOR.DESCENDANT = O.PATH_NUM
   JOIN CTE_FACT_PAIRS F
     ON O.C_BASECODE = F.CONCEPT_CD
 GROUP BY CC_ANCESTOR.ANCESTOR
 )C
-  JOIN #ONTOLOGY OANC
+  JOIN TNUM_ONTOLOGY OANC
     ON C.ANCESTOR = OANC.PATH_NUM;
 
-	EXEC EndTime @startime,@metadataTable,'counting';
+	EXEC EndTime @startime,'all ontologies','counting';
     set @startime = getdate();
 	
 
-set @sqlstr='update '+@metadataTable+'  set c_totalnum=null';
-PRINT @sqlstr;
-execute sp_executesql @sqlstr
-
-set @sqlstr='UPDATE o  set c_totalnum=agg_count from '+ @metadataTable+
- ' o inner join TOTALNUM t on t.c_fullname=o.c_fullname  where t.c_fullname=o.c_fullname and cast(agg_date as date)=cast(getdate() as date)';
-
- PRINT @sqlstr;
-execute sp_executesql @sqlstr; 
 END;
 GO

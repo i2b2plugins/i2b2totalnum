@@ -1,11 +1,12 @@
 -----------------------------------------------------------------------------------------------------------------
 -- This is all the preperatory work that must happen once when the ontology changes before running FastTotalnumRun.
--- create a view of distinct concept codes and patient nums (OBSFACT_PAIRS), a unified ontology (TNUM_ONTOLOGY) and a transitive closure table (CONCEPT_CLOSURE)
+-- create a view of distinct concept codes and patient nums (OBSFACT_PAIRS), a unified ontology (TNUM_ONTOLOGY) and a transitive closure table (CONCEPT_CLOSURE) 
 -- by Darren Henderson (UKY) and Jeff Klann, PhD (MGB) 
 -- Last updated: 07/2023
 --
--- Run with: exec FastTotalnumPrep or exec FastTotalnumPrep 'dbo' 
---  Optionally you can specify the schemaname
+-- 1) Modify the obsfact_pairs view to include additional fact tables, if applicable.
+-- 2) Run with: exec FastTotalnumPrep or exec FastTotalnumPrep 'dbo' 
+--       (Optionally you can specify the schemaname)
 --
 -- Note that this presently hardcoded (change if your table names are different): ACT_VISIT_DETAILS_V4 and ACT_DEM_V4
 -- Note that if you use more than one fact table, the obsfact_pairs view will need to be customized.
@@ -39,6 +40,9 @@ if object_id(N'OBSFACT_PAIRS') is not null exec('drop view OBSFACT_PAIRS');
 
 --RAISERROR(N'Building OBSFACT_PAIRS', 1, 1) with nowait;
 
+-- Modify this view as needed to include additional fact tables. e.g., 
+--   CREATE VIEW OBSFACT_PAIRS AS SELECT DISTINCT PATIENT_NUM, CONCEPT_CD FROM observation_fact
+--     UNION ALL SELECT DISTINCT PATIENT_NUM, CONCEPT_CD FROM Derived_fact
 exec('CREATE VIEW OBSFACT_PAIRS AS SELECT DISTINCT PATIENT_NUM, CONCEPT_CD FROM observation_fact;')
 
 
@@ -81,7 +85,7 @@ CREATE TABLE TNUM_ONTOLOGY (
 	[C_COLUMNDATATYPE] [varchar](50) NOT NULL,
 	[C_OPERATOR] [varchar](10) NOT NULL,
 	[C_DIMCODE] [varchar](700) NOT NULL,
-	[M_APPLIED_PATH] [varchar](700) NOT NULL
+	[M_APPLIED_PATH] [varchar](900) NOT NULL
 ) ON [PRIMARY];
 
 /* LOAD TNUM_ONTOLOGY*/
