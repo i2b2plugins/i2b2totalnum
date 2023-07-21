@@ -1,26 +1,19 @@
 # i2b2totalnum
 Current development projects around patient counting scripts for i2b2. 
 
-totalnum_usp has the scripts released with i2b2 1.7.13, plus an additional faster version conceived by Darren Henderson at UKY. This faster version is presently only available for MSSQL. 
-
-
-
-
-These replace the `pat_count_dimensions` and `run_all_counts` stored procedures with a much faster version, courtesy of Darren Henderson at UKY.
-
-This does not yet count the patient and visit dimensions.
+totalnum_usp has the scripts released with i2b2 1.7.13, plus an additional faster version conceived by Darren Henderson at UKY. This faster version is presently only available for MSSQL. These replace the `pat_count_dimensions` and `run_all_counts` stored procedures.
 
 ## 1.7.13 version [documentation here](https://community.i2b2.org/wiki/display/RM/1.7.13+Release+Notes#id-1.7.13ReleaseNotes-TotalnumScriptsSetup)
 ## 1.8 (Fast MSSQL) version
 1. Load the stored procedures:
-  * ` totalnum_usp/sqlserver/totalnum_fast.sql`
-  * ` totalnum_usp/sqlserver/totalnum_fast_prep.sql `
+  *  `totalnum_usp/sqlserver/totalnum_fast.sql`
+  *  ` totalnum_usp/sqlserver/totalnum_fast_prep.sql `
   *  ` totalnum_usp/sqlserver/totalnum_fast_output.sql `
   *  ` totalnum_usp/sqlserver/make_report.sql `
   *  ` totalnum_usp/sqlserver/helper_normalrand.sql `
   *  ` totalnum_usp/sqlserver/helper_endtime.sql  `
 
-2. The first time you run this and when your local ontology changes, you must run the preperatory procedure. This:creates a view of distinct concept codes and patient nums (OBSFACT\_PAIRS), a unified ontology table (TNUM\_ONTOLOGY) and a transitive closure table (CONCEPT\_CLOSURE). It could take an hour to run.
+2. The first time you run this and when your local ontology changes, you must run the preperatory procedure. This creates a view of distinct concept codes and patient nums (OBSFACT\_PAIRS), a unified ontology table (TNUM\_ONTOLOGY) and a transitive closure table (CONCEPT\_CLOSURE). It could take an hour to run.
 
      * `exec FastTotalnumPrep or exec FastTotalnumPrep 'dbo' `
      * Optionally you can specify the schemaname, as above.
@@ -34,9 +27,19 @@ This does not yet count the patient and visit dimensions.
     * `exec FastTotalnumOutput or exec FastTotalnumOutput 'dbo','@' `
     * Optionally you can specify the schemaname and a single table name to run on a single ontology table (or @ for all).
 
- Summary:  
-    1. `exec FastTotalnumPrep or exec FastTotalnumPrep 'dbo'` (Run once when ontology changes.) 
-    2. `exec FastTotalnumCount` (Actual counting, takes several hours.) 
-    3. `exec FastTotalnumOutput or exec FastTotalnumOutput 'dbo','@'` (Output results to report table and UI.)
+### Summary:  
+ 1. `exec FastTotalnumPrep or exec FastTotalnumPrep 'dbo'` (Run once when ontology changes.) 
+ 2. `exec FastTotalnumCount` (Actual counting, takes several hours.) 
+ 3. `exec FastTotalnumOutput or exec FastTotalnumOutput 'dbo','@'` (Output results to report table and UI.)
 
-    
+# Some additional notes on running Postgres
+Some users have reported difficulty executing the totalnum scripts due to user permissions. Here are some solutions:
+1. Make sure the i2b2 user has access to insert, select, and update all i2b2 schemas... e.g., `GRANT ALL PRIVILEGES ON DATABASE i2b2 to i2b2`
+2. Make the i2b2 user a super user: `ALTER USER i2b2 with SUPERUSER;`
+3. Change the schema ownership to the i2b2 user (requires function in the postgres directory of this repository):
+```
+select change_schema_owner('i2b2demodata', 'i2b2');
+select change_schema_owner('i2b2metadata', 'i2b2');
+select change_schema_owner('i2b2pm', 'i2b2');
+select change_schema_owner('i2b2hive', 'i2b2');
+```
