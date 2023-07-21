@@ -33,7 +33,7 @@ totalnum_usp has the scripts released with i2b2 1.7.13, plus an additional faste
  3. `exec FastTotalnumOutput or exec FastTotalnumOutput 'dbo','@'` (Output results to report table and UI.)
 
 # Some additional notes on running Postgres
-Some users have reported difficulty executing the totalnum scripts due to user permissions. Here are some solutions:
+Some users have reported difficulty executing the totalnum scripts due to user permissions. Lav Patel at UKMC has offered some solutions:
 1. Make sure the i2b2 user has access to insert, select, and update all i2b2 schemas... e.g., `GRANT ALL PRIVILEGES ON DATABASE i2b2 to i2b2`
 2. Make the i2b2 user a super user: `ALTER USER i2b2 with SUPERUSER;`
 3. Change the schema ownership to the i2b2 user (requires function in the postgres directory of this repository):
