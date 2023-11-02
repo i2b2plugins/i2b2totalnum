@@ -42,4 +42,7 @@ select change_schema_owner('i2b2demodata', 'i2b2');
 select change_schema_owner('i2b2metadata', 'i2b2');
 select change_schema_owner('i2b2pm', 'i2b2');
 select change_schema_owner('i2b2hive', 'i2b2');
+
 ```
+# Some additional notes on running on OMOP
+It is possible to run counts on OMOP tables through the ENACT-OMOP feature in i2b2 1.8. The new 1.8 totalnum procedure works on OMOP - simply load the file `totalnum_usp/sqlserver/totalnum_fast_prep_OMOP.sql` instead of `totalnum_fast_prep.sql`.
