@@ -5,6 +5,7 @@ totalnum_usp has the scripts released with i2b2 1.7.13, plus an additional faste
 
 ## 1.7.13 version [documentation here](https://community.i2b2.org/wiki/display/RM/1.7.13+Release+Notes#id-1.7.13ReleaseNotes-TotalnumScriptsSetup)
 ## 1.8 (Fast MSSQL) version
+0. If using an older version of i2b2, your database might not have the totalnum and totalnum_report tables. Add them [per these instructions](https://community.i2b2.org/wiki/display/RM/1.7.13+Release+Notes#id-1.7.13ReleaseNotes-ImprovedTotalnumScripts).
 1. Load the stored procedures:
   *  `totalnum_usp/sqlserver/totalnum_fast.sql`
   *  ` totalnum_usp/sqlserver/totalnum_fast_prep.sql `
